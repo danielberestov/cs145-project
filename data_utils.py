@@ -1,5 +1,8 @@
 from __future__ import print_function
 
+import re
+import time
+
 import numpy as np
 import os
 from numpy import genfromtxt
@@ -110,4 +113,4 @@ def get_closest_related_movie_ids(dists, np_Train, k=1):
         np_Train_index = np.argsort(dists[i], kind='mergesort')[:k].astype(int)
         zeroes = np.zeros(k).astype(int)
         closestRelatedMovieIds[i] = np_Train[np_Train_index, zeroes]
-    return closestRelatedMovieIds
+    return {x[0] : tuple(x[1:]) for x in closestRelatedMovieIds}
