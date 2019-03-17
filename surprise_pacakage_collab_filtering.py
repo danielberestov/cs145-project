@@ -23,52 +23,60 @@ def get_predicted_dict(predictions):
     return predicted_dict
 
 
-def calculate_validation_mse(val_ratings, predictions):
-    num_samples = 0.0
-    mse = 0.0
-    ratings_dict = {'itemID': list(val_ratings.movieId),
-                    'userID': list(val_ratings.userId),
-                    'rating': list(val_ratings.rating)}
-    df = pd.DataFrame(ratings_dict)
+def calculate_rating_for_batch(predictions, avg_usr_df, test_ratings_df, index_of_test_data_iterations):
 
-    size_df = df.shape[0]
-    global_index = 0
+    size_df = test_ratings_df.shape[0]
 
     predicted_dict = get_predicted_dict(predictions)
+    max_user_id_in_predictions = max(predicted_dict, key=int)
 
 
-    while global_index < size_df:
-        user_id = int(df.loc[global_index]['userID'])
-        movie_id = int(df.loc[global_index]['itemID'])
-        rating = float(df.loc[global_index]['rating'])
+    while index_of_test_data_iterations < size_df:
+        id = int(test_ratings_df.loc[index_of_test_data_iterations]['ID'])
+        user_id = int(test_ratings_df.loc[index_of_test_data_iterations]['userID'])
+        movie_id = int(test_ratings_df.loc[index_of_test_data_iterations]['movieID'])
 
-        if user_id in predicted_dict:
-            predicted_movies = predicted_dict[user_id]
-        else:
-            global_index += 1
-            continue
+        if user_id > max_user_id_in_predictions:
+            break
+
+        predicted_movies = predicted_dict[user_id]
         if movie_id in predicted_movies:
             pred_rating = predicted_movies[movie_id]
-            num_samples += 1.0
-            mse += math.pow(rating - pred_rating, 2)
-        global_index +=1
+            with open('sample_submission.csv', 'a') as f:
+                f.write("{0},{1:.3f}\n".format(id, pred_rating))
+        else:
+            avg_user_rating = avg_usr_df.loc[user_id-1]['avg_rate']
+            with open('sample_submission.csv', 'a') as f:
+                f.write("{0},{1:.3f}\n".format(id, avg_user_rating))
 
-    if num_samples > 0.0:
-        mse /= num_samples
-    print("Mean squared error for validation is: " + str(mse))
+        index_of_test_data_iterations += 1
+
+    return index_of_test_data_iterations
 
 
 time_start = time.time()
-ratings = pd.read_csv('dataset/ml-latest-small/full_ratings_test.csv', engine='python') # reading data in pandas df
-#val_ratings = pd.read_csv('dataset/ml-latest-small/full_val_ratings_test.csv', engine='python')
+ratings = pd.read_csv('movieratepredictions/train_ratings.csv', engine='python') # reading data in pandas df
+avg_user_ratings = pd.read_csv('dataset/user_rate.csv', engine='python')
+test_ratings = pd.read_csv('movieratepredictions/test_ratings.csv', engine='python')
 
 ratings_dict = {'itemID': list(ratings.movieId),
                 'userID': list(ratings.userId),
                 'rating': list(ratings.rating)}
 
-reader = Reader(rating_scale=(0.5, 5.0))
+avg_usr_rating_dict = {'userID': list(avg_user_ratings.userId),
+                'avg_rate': list(avg_user_ratings.avg_rate)}
+
+test_ratings_dict = {'ID': list(test_ratings.Id),
+                    'userID': list(test_ratings.userId),
+                     'movieID': list(test_ratings.movieId)}
+
+avg_usr_df = pd.DataFrame(avg_usr_rating_dict)
+test_ratings_df = pd.DataFrame(test_ratings_dict)
+
 # A reader is still needed but only the rating_scale param is required.
 # The Reader class is used to parse a file containing ratings.
+reader = Reader(rating_scale=(0.5, 5.0))
+
 
 df = pd.DataFrame(ratings_dict)
 global_index = 0
@@ -77,6 +85,10 @@ size_df = df.shape[0]
 start_next_batch = True
 starting_userId = 0
 start_index = 0
+index_of_test_data_iterations = 0
+
+with open('sample_submission.csv', 'w') as f:
+    f.write("Id,rating\n")
 
 while global_index < size_df:
     user_id = int(df.loc[global_index]['userID'])
@@ -107,17 +119,7 @@ while global_index < size_df:
         print('Num rows from user id ' + str(starting_userId) + " to " + str(user_id) + " is " + str(global_index - start_index  + 1))
         print("Num items in batch: " + str(user_id - starting_userId + 1))
 
-        #calculate_validation_mse(val_ratings, predictions)
-
-        if os.path.exists('svd_100_collab_filtering.csv'):
-            append_write = 'a'  # append if already exists
-        else:
-            append_write = 'w'  # make a new file if not
-
-        with open('svd_100_collab_filtering.csv', append_write) as f:
-            f.write("userId,movieId,estimate")
-            for item in predictions:
-                f.write("{0},{1},{2}\n".format(item[0], item[1], item[3]))
+        index_of_test_data_iterations = calculate_rating_for_batch(predictions, avg_usr_df, test_ratings_df, index_of_test_data_iterations)
 
         start_next_batch = True
     global_index +=1
